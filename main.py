@@ -41,6 +41,15 @@ db = mongo_client["mindpulse"]
 messages_collection = db["messages"]
 analyses_collection = db["analyses"]
 students_collection = db["students"]
+SYSTEM_PROMPT = """
+You are MindPulse, an empathetic, supportive, and intelligent AI companion designed for students. 
+
+CRITICAL BEHAVIOR RULES:
+1. Be a supportive listener first. Respond naturally to the user's specific text without forcing a preset agenda.
+2. DO NOT constantly suggest breathing, grounding, or "5-4-3-2-1" exercises. Only offer tactical exercises if the user explicitly asks for a coping mechanism, expresses extreme acute panic, or asks how to calm down.
+3. Keep your tone grounded, friendly, and human. Avoid sounding like a rigid, repetitive script. 
+4. If a user says good night or hello, simply greet them warmly and conversationally without instructing them to take deep breaths or notice the ground.
+"""
 CHECKIN_MESSAGE = "Hey! Just checking in — how's your week been going? 🙂"
 CRISIS_HELPLINE_MESSAGE = (
     "I hear you, and I'm really glad you told me. What you're feeling matters, and you "
@@ -120,7 +129,7 @@ async def analyze_conversation(chat_id: str) -> dict:
         cursor = messages_collection.find({"chat_id": chat_id, "conversation_open": True}).sort("timestamp", 1)
         student_messages = [m["text"] for m in await cursor.to_list(length=100)]
         
-        # 💡 FIX 1: If there are fewer than 2 messages, skip analysis and assume 'low' risk
+        # FIX 1: If there are fewer than 2 messages, skip analysis and assume 'low' risk
         if len(student_messages) <= 1:
             return {
                 "risk_level": "low", "confidence": "high",
@@ -132,16 +141,16 @@ async def analyze_conversation(chat_id: str) -> dict:
 
         completion = await groq_client.chat.completions.create(
             model=GROQ_MODEL,
-            temperature=0.2,
+            temperature=0.2, # 💡 Keep this low for reliable JSON generation
             max_tokens=500,
             messages=[
-                {"role": "system", "content": CONVERSATION_ANALYSIS_PROMPT},
+                {"role": "system", "content": CONVERSATION_ANALYSIS_PROMPT}, 
                 {"role": "user", "content": f"Conversation so far:\n{transcript}"},
             ],
         )
         result = clean_and_parse_json(completion.choices[0].message.content)
         
-        # 💡 FIX 2: Standardize case format to avoid strict assertion crash
+        # FIX 2: Standardize case format to avoid strict assertion crash
         if "risk_level" in result:
             result["risk_level"] = str(result["risk_level"]).strip().lower()
             
@@ -155,23 +164,24 @@ async def analyze_conversation(chat_id: str) -> dict:
             "risk_level": "low", "confidence": "low",
             "overall_mood_summary": "Parsing error structural handling.", "tone_shift": "unknown",
             "recurring_themes": [], "reasoning": "Fallback applied gracefully.", "clarifying_question": ""
-        }
-        
+        }        
 async def generate_reply(latest_message: str, risk_level: str, mood_summary: str) -> str:
     style_guide = {
-        "low": "Reply warmly and briefly. Offer ONE small practical grounding technique.",
+        "low": "Listen attentively. Respond casually and conversationally like an empathetic peer.",
         "moderate": "Reply with genuine warmth. Gently suggest talking to a counselor and offer to help book a slot."
     }
+    
     completion = await groq_client.chat.completions.create(
         model=GROQ_MODEL,
-        temperature=0.7,
+        temperature=0.7, # Keep it at 0.7 so it talks like a normal human being
         max_tokens=200,
         messages=[
-            {"role": "system", "content": f"You are a warm check-in companion. Context: {mood_summary}. {style_guide.get(risk_level, '')}"},
+            #  COMBINE: We pass the main SYSTEM_PROMPT instructions + specific risk context
+            {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nCurrent Student Context: {mood_summary}. Guide: {style_guide.get(risk_level, '')}"},
             {"role": "user", "content": latest_message},
         ],
     )
-    return completion.choices[0].message.content.strip()
+    return completion.choices[0].message.content.strip())
 def register_student(chat_id: str, name: str = ""):
     students_collection.update_one(
         {"chat_id": chat_id},
