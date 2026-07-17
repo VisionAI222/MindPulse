@@ -190,7 +190,7 @@ async def generate_reply(latest_message: str, risk_level: str, mood_summary: str
             {"role": "user", "content": latest_message},
         ],
     )
-    return completion.choices[0].message.content.strip())
+    return completion.choices[0].message.content.strip()
 def register_student(chat_id: str, name: str = ""):
     students_collection.update_one(
         {"chat_id": chat_id},
