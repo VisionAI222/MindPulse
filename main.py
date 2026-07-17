@@ -123,6 +123,15 @@ async def instant_safety_check(message_text: str) -> dict:
     except Exception as e:
         return {"immediate_danger": True, "reason": f"Safety check parsing fallback: {str(e)}"}
 
+def clean_and_parse_json(raw_text: str) -> dict:
+    import json
+    try:
+        # Strip away any markdown code block fences if the LLM added them
+        cleaned = raw_text.strip().strip("`").replace("json", "", 1).strip()
+        return json.loads(cleaned)
+    except Exception:
+        return {"risk_level": "low"}
+
 async def analyze_conversation(chat_id: str) -> dict:
     try:
         # Fetch conversation open logs
