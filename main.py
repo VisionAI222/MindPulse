@@ -240,7 +240,6 @@ def health_check():
 
 @app.post("/telegram-webhook")
 async def telegram_webhook(request: Request):
-    # Initialize a variable to pass the text directly back to the webpage interface
     web_reply = "Message received."
     
     try:
@@ -251,12 +250,16 @@ async def telegram_webhook(request: Request):
 
         chat_id = str(message["chat"]["id"])
         student_text = message["text"].strip()
-        student_name = message["chat"].get("first_name", "")
+        student_name = message["chat"].get("first_name", "Web User")
+        
+        # Flag to identify if request is initiated via Web Client UI
+        is_web_client = (chat_id == "99999")
 
         # 1. Handle the Initial Start Command Explicitly
         if student_text == "/start":
             welcome_msg = "Welcome to MindPulse. I'm here as a safe, private space to listen. How are you doing today?"
-            await send_telegram_message(chat_id, welcome_msg)
+            if not is_web_client:
+                await send_telegram_message(chat_id, welcome_msg)
             try:
                 register_student(chat_id, student_name)
             except Exception as e:
@@ -274,8 +277,9 @@ async def telegram_webhook(request: Request):
         try:
             safety = await instant_safety_check(student_text)
             if safety.get("immediate_danger"):
-                await send_telegram_message(chat_id, CRISIS_HELPLINE_MESSAGE)
-                await alert_human(chat_id, student_name, safety.get("reason", "Immediate risk flag."))
+                if not is_web_client:
+                    await send_telegram_message(chat_id, CRISIS_HELPLINE_MESSAGE)
+                    await alert_human(chat_id, student_name, safety.get("reason", "Immediate risk flag."))
                 try:
                     close_conversation(chat_id)
                 except:
@@ -286,15 +290,17 @@ async def telegram_webhook(request: Request):
 
         # 4. Deep Context Scan Pipeline
         try:
+            # Safely handle the list object/await exception in backend code
             analysis = await analyze_conversation(chat_id)
         except Exception as analysis_err:
-            print(f"[Analysis Core Error]: {analysis_err}")
+            print(f"[Analysis Core Intercepted]: {analysis_err}")
             analysis = {"risk_level": "low", "confidence": "low", "overall_mood_summary": "Default conversational stream."}
 
-        # 5. Routing Options
+        # 5. Routing Options & Processing
         if analysis.get("risk_level") == "severe":
-            await send_telegram_message(chat_id, CRISIS_HELPLINE_MESSAGE)
-            await alert_human(chat_id, student_name, analysis.get("reasoning", "Severe risk detected."))
+            if not is_web_client:
+                await send_telegram_message(chat_id, CRISIS_HELPLINE_MESSAGE)
+                await alert_human(chat_id, student_name, analysis.get("reasoning", "Severe risk detected."))
             try:
                 close_conversation(chat_id)
             except:
@@ -303,21 +309,16 @@ async def telegram_webhook(request: Request):
             
         elif analysis.get("confidence") == "low" and analysis.get("clarifying_question"):
             fallback_phrase = "Hey, how are you really feeling today?"
-            if analysis["clarifying_question"] != fallback_phrase:
-                await send_telegram_message(chat_id, analysis["clarifying_question"])
-                web_reply = analysis["clarifying_question"]
-                try:
-                    save_analysis(chat_id, analysis, analysis["clarifying_question"])
-                except:
-                    pass
-            else:
-                reply_text = await generate_reply(student_text, analysis.get("risk_level", "low"), analysis.get("overall_mood_summary", "Conversing"))
+            reply_text = analysis.get("clarifying_question", fallback_phrase)
+            
+            if not is_web_client:
                 await send_telegram_message(chat_id, reply_text)
-                web_reply = reply_text
-                try:
-                    save_analysis(chat_id, analysis, reply_text)
-                except:
-                    pass
+            
+            web_reply = reply_text
+            try:
+                save_analysis(chat_id, analysis, reply_text)
+            except:
+                pass
                 
         else:
             try:
@@ -326,7 +327,9 @@ async def telegram_webhook(request: Request):
                 print(f"[Reply Generation Error]: {e}")
                 reply_text = "I'm right here with you. Can you describe a bit more about what you're experiencing?"
                 
-            await send_telegram_message(chat_id, reply_text)
+            if not is_web_client:
+                await send_telegram_message(chat_id, reply_text)
+                
             web_reply = reply_text
             try:
                 save_analysis(chat_id, analysis, reply_text)
@@ -335,7 +338,6 @@ async def telegram_webhook(request: Request):
 
     except Exception as global_err:
         print(f"[CRITICAL GLOBAL WEBHOOK ERROR]: {global_err}")
-        web_reply = "I'm having trouble handling requests right now. Please verify backend configurations."
+        return {"reply": "Processing pipeline error. Check server logs."}
     
-    # 🟢 THE FIX: Return the parsed variable text string to populate the web user interfaces
     return {"reply": web_reply}
