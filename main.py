@@ -242,22 +242,24 @@ def health_check():
 async def telegram_webhook(request: Request):
     web_reply = "Message received."
     
+    # ID from Render environment variables (fallback to a dummy string if not set)
+    ADMIN_CHAT_ID = os.environ.get("COUNSELOR_CHAT_ID", "99999") 
+
     try:
         body = await request.json()
         message = body.get("message")
         if not message or "text" not in message:
-            return {"reply": "Invalid request parameters structure."}
+            return {"reply": "Invalid request structure."}
 
         chat_id = str(message["chat"]["id"])
         student_text = message["text"].strip()
         student_name = message["chat"].get("first_name", "Web User")
         
-        # Flag to identify if request is initiated via Web Client UI
         is_web_client = (chat_id == "99999")
 
         # 1. Handle the Initial Start Command Explicitly
         if student_text == "/start":
-            welcome_msg = "Welcome to MindPulse. I'm here as a safe, private space to listen. How are you doing today?"
+            welcome_msg = "Welcome to MindPulse. How are you doing today?"
             if not is_web_client:
                 await send_telegram_message(chat_id, welcome_msg)
             try:
@@ -277,20 +279,23 @@ async def telegram_webhook(request: Request):
         try:
             safety = await instant_safety_check(student_text)
             if safety.get("immediate_danger"):
+                # 🎯 Route to you if it's the web client, otherwise to the actual chat user
+                target_admin_id = ADMIN_CHAT_ID if is_web_client else chat_id
+                
+                await alert_human(target_admin_id, student_name, safety.get("reason", "Immediate risk flag."))
+                
                 if not is_web_client:
                     await send_telegram_message(chat_id, CRISIS_HELPLINE_MESSAGE)
-                    await alert_human(chat_id, student_name, safety.get("reason", "Immediate risk flag."))
-                try:
-                    close_conversation(chat_id)
-                except:
-                    pass
+                    try:
+                        close_conversation(chat_id)
+                    except:
+                        pass
                 return {"reply": CRISIS_HELPLINE_MESSAGE}
         except Exception as safety_err:
             print(f"[Safety Engine Error]: {safety_err}")
 
         # 4. Deep Context Scan Pipeline
         try:
-            # Safely handle the list object/await exception in backend code
             analysis = await analyze_conversation(chat_id)
         except Exception as analysis_err:
             print(f"[Analysis Core Intercepted]: {analysis_err}")
@@ -298,13 +303,15 @@ async def telegram_webhook(request: Request):
 
         # 5. Routing Options & Processing
         if analysis.get("risk_level") == "severe":
+            target_admin_id = ADMIN_CHAT_ID if is_web_client else chat_id
+            await alert_human(target_admin_id, student_name, analysis.get("reasoning", "Severe risk detected."))
+            
             if not is_web_client:
                 await send_telegram_message(chat_id, CRISIS_HELPLINE_MESSAGE)
-                await alert_human(chat_id, student_name, analysis.get("reasoning", "Severe risk detected."))
-            try:
-                close_conversation(chat_id)
-            except:
-                pass
+                try:
+                    close_conversation(chat_id)
+                except:
+                    pass
             web_reply = CRISIS_HELPLINE_MESSAGE
             
         elif analysis.get("confidence") == "low" and analysis.get("clarifying_question"):
@@ -315,11 +322,6 @@ async def telegram_webhook(request: Request):
                 await send_telegram_message(chat_id, reply_text)
             
             web_reply = reply_text
-            try:
-                save_analysis(chat_id, analysis, reply_text)
-            except:
-                pass
-                
         else:
             try:
                 reply_text = await generate_reply(student_text, analysis.get("risk_level", "low"), analysis.get("overall_mood_summary", "Conversing"))
@@ -331,10 +333,6 @@ async def telegram_webhook(request: Request):
                 await send_telegram_message(chat_id, reply_text)
                 
             web_reply = reply_text
-            try:
-                save_analysis(chat_id, analysis, reply_text)
-            except:
-                pass
 
     except Exception as global_err:
         print(f"[CRITICAL GLOBAL WEBHOOK ERROR]: {global_err}")
