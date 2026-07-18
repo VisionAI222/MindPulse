@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MindPulse | AI Mental Wellness</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+</head>
+<body>
+
+<header>
+    <div class="logo">
+        <i class="fa-solid fa-brain"></i> MindPulse
+    </div>
+    <nav>
+        <a href="#">Home</a>
+        <a href="#features">Features</a>
+        <a href="#about">Status</a>
+    </nav>
+</header>
+
+<!-- HERO SECTION -->
+<section class="hero">
+    <div class="hero-left">
+        <h1>Your Safe Space to <span>Talk Freely.</span></h1>
+        <p>
+            MindPulse is your confidential AI companion for emotional support, stress management, and mental wellness. Talk anytime. No judgment. Always private.
+        </p>
+        <div class="badges">
+            <div>🔒 Private</div>
+            <div>🤖 AI Powered</div>
+            <div>⚡ Instant Replies</div>
+        </div>
+    </div>
+
+    <div class="hero-right">
+        <div class="chat-card">
+            <h2>Talk with MindPulse</h2>
+            
+            <!-- Chat history area -->
+            <div id="reply"></div>
+            
+            <!-- Side-by-side action row -->
+            <div class="chat-input-container">
+                <input type="text" id="message" placeholder="How are you feeling today?">
+                <button onclick="send()">Send</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- FEATURES SECTION -->
+<section id="features" class="features">
+    <h2>Why Choose MindPulse?</h2>
+    <div class="cards">
+        <div class="card">
+            <i class="fa-solid fa-user-shield"></i>
+            <h3>Private</h3>
+            <p>Every conversation remains entirely confidential.</p>
+        </div>
+        <div class="card">
+            <i class="fa-solid fa-brain"></i>
+            <h3>Emotion Aware</h3>
+            <p>Provides thoughtful AI-based emotional support.</p>
+        </div>
+        <div class="card">
+            <i class="fa-solid fa-bolt"></i>
+            <h3>Instant</h3>
+            <p>Quick replies whenever you need a friendly ear.</p>
+        </div>
+        <div class="card">
+            <i class="fa-solid fa-heart"></i>
+            <h3>Supportive</h3>
+            <p>Designed to encourage healthy, positive conversations.</p>
+        </div>
+    </div>
+</section>
+
+<!-- STATUS SECTION -->
+<section id="about">
+    <h2>System Status</h2>
+    <div class="status-card">
+        <div id="statusDot"></div>
+        <p id="statusText">Checking server status...</p>
+    </div>
+</section>
+
+<footer>
+    <h3>MindPulse</h3>
+    <p>AI Mental Wellness Companion</p>
+    <p>© 2026 MindPulse</p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
