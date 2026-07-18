@@ -240,11 +240,14 @@ def health_check():
 
 @app.post("/telegram-webhook")
 async def telegram_webhook(request: Request):
+    # Initialize a variable to pass the text directly back to the webpage interface
+    web_reply = "Message received."
+    
     try:
         body = await request.json()
         message = body.get("message")
         if not message or "text" not in message:
-            return {"ok": True}
+            return {"reply": "Invalid request parameters structure."}
 
         chat_id = str(message["chat"]["id"])
         student_text = message["text"].strip()
@@ -254,12 +257,11 @@ async def telegram_webhook(request: Request):
         if student_text == "/start":
             welcome_msg = "Welcome to MindPulse. I'm here as a safe, private space to listen. How are you doing today?"
             await send_telegram_message(chat_id, welcome_msg)
-            # If your setup functions are async, add await here (e.g., await register_student)
             try:
                 register_student(chat_id, student_name)
             except Exception as e:
                 print(f"[Register Error Ignored]: {e}")
-            return {"ok": True}
+            return {"reply": welcome_msg}
 
         # 2. Run Database Logging Safely
         try:
@@ -267,7 +269,6 @@ async def telegram_webhook(request: Request):
             save_message(chat_id, student_text)
         except Exception as db_err:
             print(f"[Database Log Error]: {db_err}")
-            # We keep going even if logging clips so the user isn't stuck inside a loop!
 
         # 3. Instant Scan Pipeline
         try:
@@ -279,7 +280,7 @@ async def telegram_webhook(request: Request):
                     close_conversation(chat_id)
                 except:
                     pass
-                return {"ok": True}
+                return {"reply": CRISIS_HELPLINE_MESSAGE}
         except Exception as safety_err:
             print(f"[Safety Engine Error]: {safety_err}")
 
@@ -298,11 +299,13 @@ async def telegram_webhook(request: Request):
                 close_conversation(chat_id)
             except:
                 pass
+            web_reply = CRISIS_HELPLINE_MESSAGE
             
         elif analysis.get("confidence") == "low" and analysis.get("clarifying_question"):
             fallback_phrase = "Hey, how are you really feeling today?"
             if analysis["clarifying_question"] != fallback_phrase:
                 await send_telegram_message(chat_id, analysis["clarifying_question"])
+                web_reply = analysis["clarifying_question"]
                 try:
                     save_analysis(chat_id, analysis, analysis["clarifying_question"])
                 except:
@@ -310,6 +313,7 @@ async def telegram_webhook(request: Request):
             else:
                 reply_text = await generate_reply(student_text, analysis.get("risk_level", "low"), analysis.get("overall_mood_summary", "Conversing"))
                 await send_telegram_message(chat_id, reply_text)
+                web_reply = reply_text
                 try:
                     save_analysis(chat_id, analysis, reply_text)
                 except:
@@ -323,14 +327,15 @@ async def telegram_webhook(request: Request):
                 reply_text = "I'm right here with you. Can you describe a bit more about what you're experiencing?"
                 
             await send_telegram_message(chat_id, reply_text)
+            web_reply = reply_text
             try:
                 save_analysis(chat_id, analysis, reply_text)
             except:
                 pass
 
     except Exception as global_err:
-        # 🚨 THE MASTER SAFETY VALVE: If absolutely anything unexpected breaks, 
-        # we catch the error to keep the system running cleanly.
         print(f"[CRITICAL GLOBAL WEBHOOK ERROR]: {global_err}")
+        web_reply = "I'm having trouble handling requests right now. Please verify backend configurations."
     
-    return {"ok": True}
+    # 🟢 THE FIX: Return the parsed variable text string to populate the web user interfaces
+    return {"reply": web_reply}
