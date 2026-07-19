@@ -335,7 +335,7 @@ async def telegram_webhook(request: Request):
         try:
             safety = await instant_safety_check(student_text)
             if safety.get("immediate_danger"):
-                backend_logs.append(f"{get_ist_timestamp())} [SAFETY] CRITICAL FLAG: Immediate danger detected!")
+                backend_logs.append(f"{get_ist_timestamp()} [SAFETY] CRITICAL FLAG: Immediate danger detected!")
                 # Route to you if it's the web client, otherwise to the actual chat user
                 target_admin_id = ADMIN_CHAT_ID if is_web_client else chat_id
                 
