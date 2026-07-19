@@ -182,23 +182,48 @@ async def analyze_conversation(chat_id: str) -> dict:
             "recurring_themes": [], "reasoning": "Fallback applied gracefully.", "clarifying_question": ""
         }
         
-async def generate_reply(latest_message: str, risk_level: str, mood_summary: str) -> str:
+async def generate_reply(chat_id: str, latest_message: str, risk_level: str, mood_summary: str) -> str:
     style_guide = {
         "low": "Listen attentively. Respond casually and conversationally like an empathetic peer.",
         "moderate": "Reply with genuine warmth. Gently suggest talking to a counselor and offer to help book a slot."
     }
     
-    completion = await groq_client.chat.completions.create(
-        model=GROQ_MODEL,
-        temperature=0.7, # Keep it at 0.7 so it talks like a normal human being
-        max_tokens=200,
-        messages=[
-            #  COMBINE: We pass the main SYSTEM_PROMPT instructions + specific risk context
-            {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nCurrent Student Context: {mood_summary}. Guide: {style_guide.get(risk_level, '')}"},
-            {"role": "user", "content": latest_message},
-        ],
-    )
-    return completion.choices[0].message.content.strip()
+    try:
+        # 1. Fetch recent back-and-forth history for this session, sorted chronologically
+        cursor = messages_collection.find({"chat_id": chat_id, "conversation_open": True}).sort("timestamp", 1)
+        db_messages = await cursor.to_list(length=15) # SNAPPY CONTEXT WINDOW
+
+        # 2. Set up the foundational system prompt
+        messages = [
+            {
+                "role": "system", 
+                "content": f"{SYSTEM_PROMPT}\n\nCurrent Student Context: {mood_summary}. Guide: {style_guide.get(risk_level, '')}"
+            }
+        ]
+
+        # 3. Append the historical dialog tree mapping roles properly
+        for m in db_messages:
+            # Map database 'sender' to what the LLM expects ('user' or 'assistant')
+            role = "assistant" if m.get("sender") == "bot" else "user"
+            messages.append({"role": role, "content": m["text"]})
+
+        # 4. Fallback: If the incoming message hasn't hit the DB yet, add it manually
+        if not messages or messages[-1]["content"] != latest_message:
+            messages.append({"role": "user", "content": latest_message})
+
+        # 5. Let Groq evaluate the complete conversational chain
+        completion = await groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            temperature=0.7, 
+            max_tokens=200,
+            messages=messages,
+        )
+        return completion.choices[0].message.content.strip()
+
+    except Exception as e:
+        print(f"[Reply Context Compilation Error]: {e}")
+        # Structural fallback if DB or API acts up
+        return "I'm right here with you. Can you tell me more about what's on your mind?"
 def register_student(chat_id: str, name: str = ""):
     students_collection.update_one(
         {"chat_id": chat_id},
@@ -437,7 +462,7 @@ async def telegram_webhook(request: Request):
             try:
                 # 💡 TIP: If generate_reply supports full history, make sure it pulls 
                 # from your DB using chat_id instead of just reading student_text alone!
-                reply_text = await generate_reply(student_text, risk_level, mood_summary)
+                reply_text = await generate_reply(chat_id, student_text, risk_level, mood_summary)
             except Exception as e:
                 print(f"[Reply Generation Error]: {e}")
                 reply_text = "I'm right here with you. Can you describe a bit more about what you're experiencing?"
