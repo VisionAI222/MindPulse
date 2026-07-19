@@ -381,15 +381,15 @@ async def telegram_webhook(request: Request):
         except Exception as safety_err:
             print(f"[Safety Engine Error]: {safety_err}")
 
-        # 4. Deep Context Scan Pipeline (THE FIX: Removed 'await' from analyze_conversation)
+       # 4. Deep Context Scan Pipeline (RE-ADDED await so it actually evaluates!)
         try:
             backend_logs.append(f"{get_ist_timestamp()} [ANALYSIS] Running transformer context evaluations...")
-            analysis = analyze_conversation(chat_id)
+            analysis = await analyze_conversation(chat_id) # 💡 CRITICAL FIX: Must be awaited!
         except Exception as analysis_err:
             print(f"[Analysis Core Intercepted]: {analysis_err}")
             analysis = {"risk_level": "low", "confidence": "low", "overall_mood_summary": "Default conversational stream."}
 
-       # 5. Routing Options & Processing (Safely check if analysis is a list or dict)
+        # 5. Routing Options & Processing
         risk_level = "low"
         confidence = "low"
         mood_summary = "Conversing"
@@ -403,7 +403,6 @@ async def telegram_webhook(request: Request):
             clarifying_question = analysis.get("clarifying_question")
             reasoning = analysis.get("reasoning", "Normal context flow.")
         elif isinstance(analysis, list) and len(analysis) > 0:
-            # If your analyzer returns a list like ["severe"] or similar, pull the first value
             risk_level = str(analysis[0]).lower()
 
         # Execute routing logic using the safe fallback variables
@@ -427,9 +426,17 @@ async def telegram_webhook(request: Request):
             if not is_web_client:
                 await send_telegram_message(chat_id, reply_text)
             
+            # 💡 FIX: Save Bot response to database for historical context tracking
+            try:
+                save_message(chat_id, reply_text) 
+            except Exception as db_err:
+                print(f"[Database Bot Log Error]: {db_err}")
+                
             web_reply = reply_text
         else:
             try:
+                # 💡 TIP: If generate_reply supports full history, make sure it pulls 
+                # from your DB using chat_id instead of just reading student_text alone!
                 reply_text = await generate_reply(student_text, risk_level, mood_summary)
             except Exception as e:
                 print(f"[Reply Generation Error]: {e}")
@@ -437,6 +444,12 @@ async def telegram_webhook(request: Request):
                 
             if not is_web_client:
                 await send_telegram_message(chat_id, reply_text)
+                
+            # 💡 FIX: Save Bot response to database for historical context tracking
+            try:
+                save_message(chat_id, reply_text)
+            except Exception as db_err:
+                print(f"[Database Bot Log Error]: {db_err}")
                 
             web_reply = reply_text
 
