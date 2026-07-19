@@ -261,7 +261,7 @@ async def get_raw_logs():
 
 @app.get("/", response_class=HTMLResponse)
 async def live_terminal_url():
-    # The browser window loads fresh with just the base startup text.
+    html_layout = f"""
     <!DOCTYPE html>
     <html>
     <head>
@@ -291,21 +291,22 @@ async def live_terminal_url():
                     let res = await fetch('/get-raw-logs');
                     let text = await res.text();
                     
-                    // Only append new text if traffic actually occurred
                     if (text.trim().length > 0) {{
                         let container = document.getElementById('logs');
                         container.innerText += "\\n" + text;
                         window.scrollTo(0, document.body.scrollHeight);
                     }}
-                }} catch (e) {{ console.error(e); }}
+                }} catch (e) {{ 
+                    console.error(e); 
+                }}
             }}
-            // Poll for new webhook steps every 2 seconds
             setInterval(refreshLogs, 2000);
         </script>
     </body>
     </html>
     """
-    return HTMLResponse(content=html_layout, status_code=200)
+    return HTMLResponse(content=html_layout, status_code=200) 
+
 @app.post("/telegram-webhook")
 async def telegram_webhook(request: Request):
     web_reply = "Message received."
