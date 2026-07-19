@@ -236,11 +236,16 @@ async def alert_human(chat_id: str, student_name: str, reason: str):
         except Exception as e:
             # If sending to one counselor fails, log it but don't stop the loop
             print(f"[Alert Error] Failed to send alert to {counselor}: {str(e)}")
-
+def get_ist_timestamp():
+    # Render servers run on UTC, so we add 5 hours and 30 minutes to match IST
+    utc_now = datetime.datetime.now(datetime.timezone.utc)
+    ist_now = utc_now + datetime.timedelta(hours=5, minutes=30)
+    return ist_now.strftime('%H:%M:%S')
+    
 backend_logs = [
-    f"{time.strftime('%H:%M:%S')} RENDER DETECTED ...",
-    f"{time.strftime('%H:%M:%S')} INCOMING HTTP REQUEST DETECTED ...",
-    f"{time.strftime('%H:%M:%S')} MINDPULSE AGENT IS ALREADY LIVE ...",
+    f"{get_ist_timestamp()} RENDER DETECTED ...",
+    f"{get_ist_timestamp()} INCOMING HTTP REQUEST DETECTED ...",
+    f"{get_ist_timestamp()} MINDPULSE AGENT IS ALREADY LIVE ...",
     "--------------------------------------------------"
 ]
 @app.get("/get-raw-logs")
@@ -304,7 +309,7 @@ async def telegram_webhook(request: Request):
         is_web_client = (chat_id == "99999")
 
         # 📺 LOG INCOMING MESSAGE (No await!)
-        backend_logs.append(f"{time.strftime('%H:%M:%S')} [INCOMING] Message from '{student_name}': {student_text}")
+        backend_logs.append(f"{get_ist_timestamp()} [INCOMING] Message from '{student_name}': {student_text}")
 
         # 1. Handle the Initial Start Command Explicitly
         if student_text == "/start":
@@ -316,7 +321,7 @@ async def telegram_webhook(request: Request):
             except Exception as e:
                 print(f"[Register Error Ignored]: {e}")
             
-            backend_logs.append(f"{time.strftime('%H:%M:%S')} [SYSTEM] New conversation session started.")
+            backend_logs.append(f"{get_ist_timestamp()} [SYSTEM] New conversation session started.")
             return {"reply": welcome_msg}
 
         # 2. Run Database Logging Safely
@@ -330,7 +335,7 @@ async def telegram_webhook(request: Request):
         try:
             safety = await instant_safety_check(student_text)
             if safety.get("immediate_danger"):
-                backend_logs.append(f"{time.strftime('%H:%M:%S')} [SAFETY] CRITICAL FLAG: Immediate danger detected!")
+                backend_logs.append(f"{get_ist_timestamp())} [SAFETY] CRITICAL FLAG: Immediate danger detected!")
                 # Route to you if it's the web client, otherwise to the actual chat user
                 target_admin_id = ADMIN_CHAT_ID if is_web_client else chat_id
                 
@@ -348,17 +353,34 @@ async def telegram_webhook(request: Request):
 
         # 4. Deep Context Scan Pipeline (THE FIX: Removed 'await' from analyze_conversation)
         try:
-            backend_logs.append(f"{time.strftime('%H:%M:%S')} [ANALYSIS] Running transformer context evaluations...")
+            backend_logs.append(f"{get_ist_timestamp()} [ANALYSIS] Running transformer context evaluations...")
             analysis = analyze_conversation(chat_id)
         except Exception as analysis_err:
             print(f"[Analysis Core Intercepted]: {analysis_err}")
             analysis = {"risk_level": "low", "confidence": "low", "overall_mood_summary": "Default conversational stream."}
 
-        # 5. Routing Options & Processing
-        if analysis.get("risk_level") == "severe":
-            backend_logs.append(f"{time.strftime('%H:%M:%S')} [SAFETY] SEVERE LONG-TERM RISK FLAG ENCOUNTERED.")
+       # 5. Routing Options & Processing (Safely check if analysis is a list or dict)
+        risk_level = "low"
+        confidence = "low"
+        mood_summary = "Conversing"
+        clarifying_question = None
+        reasoning = "Normal context flow."
+
+        if isinstance(analysis, dict):
+            risk_level = analysis.get("risk_level", "low")
+            confidence = analysis.get("confidence", "low")
+            mood_summary = analysis.get("overall_mood_summary", "Conversing")
+            clarifying_question = analysis.get("clarifying_question")
+            reasoning = analysis.get("reasoning", "Normal context flow.")
+        elif isinstance(analysis, list) and len(analysis) > 0:
+            # If your analyzer returns a list like ["severe"] or similar, pull the first value
+            risk_level = str(analysis[0]).lower()
+
+        # Execute routing logic using the safe fallback variables
+        if risk_level == "severe":
+            backend_logs.append(f"{get_ist_timestamp()} [SAFETY] SEVERE LONG-TERM RISK FLAG ENCOUNTERED.")
             target_admin_id = ADMIN_CHAT_ID if is_web_client else chat_id
-            await alert_human(target_admin_id, student_name, analysis.get("reasoning", "Severe risk detected."))
+            await alert_human(target_admin_id, student_name, reasoning)
             
             if not is_web_client:
                 await send_telegram_message(chat_id, CRISIS_HELPLINE_MESSAGE)
@@ -368,9 +390,9 @@ async def telegram_webhook(request: Request):
                     pass
             web_reply = CRISIS_HELPLINE_MESSAGE
             
-        elif analysis.get("confidence") == "low" and analysis.get("clarifying_question"):
+        elif confidence == "low" and clarifying_question:
             fallback_phrase = "Hey, how are you really feeling today?"
-            reply_text = analysis.get("clarifying_question", fallback_phrase)
+            reply_text = clarifying_question if clarifying_question else fallback_phrase
             
             if not is_web_client:
                 await send_telegram_message(chat_id, reply_text)
@@ -378,7 +400,7 @@ async def telegram_webhook(request: Request):
             web_reply = reply_text
         else:
             try:
-                reply_text = await generate_reply(student_text, analysis.get("risk_level", "low"), analysis.get("overall_mood_summary", "Conversing"))
+                reply_text = await generate_reply(student_text, risk_level, mood_summary)
             except Exception as e:
                 print(f"[Reply Generation Error]: {e}")
                 reply_text = "I'm right here with you. Can you describe a bit more about what you're experiencing?"
@@ -389,11 +411,10 @@ async def telegram_webhook(request: Request):
             web_reply = reply_text
 
         # 📺 LOG SUCCESSFUL RESPONSE OUTBOUND
-        backend_logs.append(f"{time.strftime('%H:%M:%S')} [SUCCESS] Sent response back to chat interface.")
-
+        backend_logs.append(f"{get_ist_timestamp()} [SUCCESS] Sent response back to chat interface.")
     except Exception as global_err:
         print(f"[CRITICAL GLOBAL WEBHOOK ERROR]: {global_err}")
-        backend_logs.append(f"{time.strftime('%H:%M:%S')} [CRITICAL ERROR] Webhook execution failed.")
+        backend_logs.append(f"{get_ist_timestamp()} [CRITICAL ERROR] Webhook execution failed.")
         return {"reply": "Processing pipeline error. Check server logs."}
     
     return {"reply": web_reply}
