@@ -250,18 +250,26 @@ backend_logs = [
 ]
 @app.get("/get-raw-logs")
 async def get_raw_logs():
-    return Response(content="\n".join(backend_logs), media_type="text/plain")
+    global backend_logs
+    # Grab whatever logs have built up since the last check
+    current_batch = "\n".join(backend_logs)
+    
+    # Clear the server memory instantly so old logs aren't sent again
+    backend_logs = []  
+    return Response(content=current_batch, media_type="text/plain")
 
 @app.get("/", response_class=HTMLResponse)
 async def live_terminal_url():
-    html_layout = """
+    # The browser window loads fresh with just the base startup text.
+    # It will dynamically append incoming webhook updates without showing old history!
+    html_layout = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <title>Render Terminal</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-            body { 
+            body {{ 
                 background-color: #000000; 
                 color: #ffffff; 
                 font-family: monospace; 
@@ -270,25 +278,35 @@ async def live_terminal_url():
                 white-space: pre-wrap;
                 font-size: 14px;
                 line-height: 1.5;
-            }
+            }}
         </style>
     </head>
-    <body><div id="logs">Loading live stream...</div><script>
-            async function refreshLogs() {
-                try {
+    <body>
+        <div id="logs">{get_ist_timestamp()} RENDER DETECTED ...
+{get_ist_timestamp()} INCOMING HTTP REQUEST DETECTED ...
+{get_ist_timestamp()} MINDPULSE AGENT IS ALREADY LIVE ...
+--------------------------------------------------</div>
+        <script>
+            async function refreshLogs() {{
+                try {{
                     let res = await fetch('/get-raw-logs');
                     let text = await res.text();
-                    document.getElementById('logs').innerText = text;
-                    window.scrollTo(0, document.body.scrollHeight);
-                } catch (e) { console.error(e); }
+                    
+                    // Only append new text if traffic actually occurred
+                    if (text.trim().length > 0) {{
+                        let container = document.getElementById('logs');
+                        container.innerText += "\\n" + text;
+                        window.scrollTo(0, document.body.scrollHeight);
+                    }}
+                } catch (e) {{ console.error(e); }}
             }
+            // Poll for new webhook steps every 2 seconds
             setInterval(refreshLogs, 2000);
-            refreshLogs();
-        </script></body>
+        </script>
+    </body>
     </html>
     """
     return HTMLResponse(content=html_layout, status_code=200)
-
 @app.post("/telegram-webhook")
 async def telegram_webhook(request: Request):
     web_reply = "Message received."
