@@ -283,6 +283,7 @@ async def live_terminal_url():
     </html>
     """
     return HTMLResponse(content=html_layout, status_code=200)
+
 @app.post("/telegram-webhook")
 async def telegram_webhook(request: Request):
     web_reply = "Message received."
@@ -302,6 +303,9 @@ async def telegram_webhook(request: Request):
         
         is_web_client = (chat_id == "99999")
 
+        # 📺 LOG INCOMING MESSAGE (No await!)
+        backend_logs.append(f"{time.strftime('%H:%M:%S')} [INCOMING] Message from '{student_name}': {student_text}")
+
         # 1. Handle the Initial Start Command Explicitly
         if student_text == "/start":
             welcome_msg = "Welcome to MindPulse. How are you doing today?"
@@ -311,6 +315,8 @@ async def telegram_webhook(request: Request):
                 register_student(chat_id, student_name)
             except Exception as e:
                 print(f"[Register Error Ignored]: {e}")
+            
+            backend_logs.append(f"{time.strftime('%H:%M:%S')} [SYSTEM] New conversation session started.")
             return {"reply": welcome_msg}
 
         # 2. Run Database Logging Safely
@@ -324,7 +330,8 @@ async def telegram_webhook(request: Request):
         try:
             safety = await instant_safety_check(student_text)
             if safety.get("immediate_danger"):
-                # 🎯 Route to you if it's the web client, otherwise to the actual chat user
+                backend_logs.append(f"{time.strftime('%H:%M:%S')} [SAFETY] CRITICAL FLAG: Immediate danger detected!")
+                # Route to you if it's the web client, otherwise to the actual chat user
                 target_admin_id = ADMIN_CHAT_ID if is_web_client else chat_id
                 
                 await alert_human(target_admin_id, student_name, safety.get("reason", "Immediate risk flag."))
@@ -339,15 +346,17 @@ async def telegram_webhook(request: Request):
         except Exception as safety_err:
             print(f"[Safety Engine Error]: {safety_err}")
 
-        # 4. Deep Context Scan Pipeline
+        # 4. Deep Context Scan Pipeline (THE FIX: Removed 'await' from analyze_conversation)
         try:
-            analysis = await analyze_conversation(chat_id)
+            backend_logs.append(f"{time.strftime('%H:%M:%S')} [ANALYSIS] Running transformer context evaluations...")
+            analysis = analyze_conversation(chat_id)
         except Exception as analysis_err:
             print(f"[Analysis Core Intercepted]: {analysis_err}")
             analysis = {"risk_level": "low", "confidence": "low", "overall_mood_summary": "Default conversational stream."}
 
         # 5. Routing Options & Processing
         if analysis.get("risk_level") == "severe":
+            backend_logs.append(f"{time.strftime('%H:%M:%S')} [SAFETY] SEVERE LONG-TERM RISK FLAG ENCOUNTERED.")
             target_admin_id = ADMIN_CHAT_ID if is_web_client else chat_id
             await alert_human(target_admin_id, student_name, analysis.get("reasoning", "Severe risk detected."))
             
@@ -379,8 +388,12 @@ async def telegram_webhook(request: Request):
                 
             web_reply = reply_text
 
+        # 📺 LOG SUCCESSFUL RESPONSE OUTBOUND
+        backend_logs.append(f"{time.strftime('%H:%M:%S')} [SUCCESS] Sent response back to chat interface.")
+
     except Exception as global_err:
         print(f"[CRITICAL GLOBAL WEBHOOK ERROR]: {global_err}")
+        backend_logs.append(f"{time.strftime('%H:%M:%S')} [CRITICAL ERROR] Webhook execution failed.")
         return {"reply": "Processing pipeline error. Check server logs."}
     
     return {"reply": web_reply}
