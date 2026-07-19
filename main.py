@@ -136,32 +136,38 @@ def clean_and_parse_json(raw_text: str) -> dict:
 
 async def analyze_conversation(chat_id: str) -> dict:
     try:
-        # Fetch conversation open logs
+        # 1. Fetch ALL messages in the current active conversation session sorted by time
         cursor = messages_collection.find({"chat_id": chat_id, "conversation_open": True}).sort("timestamp", 1)
-        student_messages = [m["text"] for m in await cursor.to_list(length=100)]
+        db_messages = await cursor.to_list(length=100)
         
-        # FIX 1: If there are fewer than 2 messages, skip analysis and assume 'low' risk
-        if len(student_messages) <= 1:
+        if len(db_messages) <= 1:
             return {
                 "risk_level": "low", "confidence": "high",
                 "overall_mood_summary": "Initial greeting or conversation opening.", "tone_shift": "stable",
                 "recurring_themes": [], "reasoning": "New conversation sequence.", "clarifying_question": ""
             }
 
-        transcript = "\n".join(f"- {t}" for t in student_messages)
+        # 2. Build a clear two-way chat script so the LLM sees the context
+        transcript_lines = []
+        for m in db_messages:
+            # Adjust "sender" or "role" depending on your exact DB key name
+            sender = "Bot" if m.get("sender") == "bot" else "Student"
+            transcript_lines.append(f"{sender}: {m['text']}")
+            
+        transcript = "\n".join(transcript_lines)
 
+        # 3. Send the full back-and-forth context to Groq
         completion = await groq_client.chat.completions.create(
             model=GROQ_MODEL,
-            temperature=0.2, # 💡 Keep this low for reliable JSON generation
+            temperature=0.2, 
             max_tokens=500,
             messages=[
                 {"role": "system", "content": CONVERSATION_ANALYSIS_PROMPT}, 
-                {"role": "user", "content": f"Conversation so far:\n{transcript}"},
+                {"role": "user", "content": f"Conversation dialogue history:\n{transcript}"},
             ],
         )
         result = clean_and_parse_json(completion.choices[0].message.content)
         
-        # FIX 2: Standardize case format to avoid strict assertion crash
         if "risk_level" in result:
             result["risk_level"] = str(result["risk_level"]).strip().lower()
             
@@ -170,12 +176,12 @@ async def analyze_conversation(chat_id: str) -> dict:
         
     except Exception as e:
         print(f"[Analysis Error Logged]: {str(e)}")
-        # Safe structural fallback
         return {
             "risk_level": "low", "confidence": "low",
             "overall_mood_summary": "Parsing error structural handling.", "tone_shift": "unknown",
             "recurring_themes": [], "reasoning": "Fallback applied gracefully.", "clarifying_question": ""
-        }        
+        }
+        
 async def generate_reply(latest_message: str, risk_level: str, mood_summary: str) -> str:
     style_guide = {
         "low": "Listen attentively. Respond casually and conversationally like an empathetic peer.",
