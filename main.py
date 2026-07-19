@@ -2,7 +2,9 @@ import os
 import json
 import datetime
 import httpx
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Response
+from fastapi.responses import HTMLResponse
+import time
 from groq import AsyncGroq  # Switched to Async for FastAPI performance
 from pymongo import MongoClient
 
@@ -234,10 +236,53 @@ async def alert_human(chat_id: str, student_name: str, reason: str):
         except Exception as e:
             # If sending to one counselor fails, log it but don't stop the loop
             print(f"[Alert Error] Failed to send alert to {counselor}: {str(e)}")
-@app.get("/")
-def health_check():
-    return {"status": "MindPulse is running perfectly"}
 
+backend_logs = [
+    f"{time.strftime('%H:%M:%S')} RENDER DETECTED ...",
+    f"{time.strftime('%H:%M:%S')} INCOMING HTTP REQUEST DETECTED ...",
+    f"{time.strftime('%H:%M:%S')} MINDPULSE AGENT IS ALREADY LIVE ...",
+    "--------------------------------------------------"
+]
+@app.get("/get-raw-logs")
+async def get_raw_logs():
+    return Response(content="\n".join(backend_logs), media_type="text/plain")
+
+@app.get("/", response_class=HTMLResponse)
+async def live_terminal_url():
+    html_layout = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Render Terminal</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body { 
+                background-color: #000000; 
+                color: #ffffff; 
+                font-family: monospace; 
+                padding: 20px; 
+                margin: 0; 
+                white-space: pre-wrap;
+                font-size: 14px;
+                line-height: 1.5;
+            }
+        </style>
+    </head>
+    <body><div id="logs">Loading live stream...</div><script>
+            async function refreshLogs() {
+                try {
+                    let res = await fetch('/get-raw-logs');
+                    let text = await res.text();
+                    document.getElementById('logs').innerText = text;
+                    window.scrollTo(0, document.body.scrollHeight);
+                } catch (e) { console.error(e); }
+            }
+            setInterval(refreshLogs, 2000);
+            refreshLogs();
+        </script></body>
+    </html>
+    """
+    return HTMLResponse(content=html_layout, status_code=200)
 @app.post("/telegram-webhook")
 async def telegram_webhook(request: Request):
     web_reply = "Message received."
