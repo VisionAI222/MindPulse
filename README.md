@@ -3,8 +3,8 @@
 MindPulse is an intelligent, full-stack mental health and wellness companion designed to provide students with a safe, confidential space to talk, process their thoughts, and receive empathetic support. The system monitors conversations in real-time, instantly surfacing localized crisis helplines and notifying authorized human counselors via automated administrative overrides if a severe life-safety risk is detected.
 
 ## 🚀 Live Links
-* **Live Web Interface:** [PASTE_YOUR_GITHUB_PAGES_LINK_HERE]
-* **Production API Backend:** [PASTE_YOUR_RENDER_URL_HERE]
+* **Live Web Interface:** [https://visionai222.github.io/MindPulse/]
+* **Production API Backend:** [https://mindpulse-gw43.onrender.com]
 
 ## 🛠️ System Architecture
 * **Frontend:** Responsive HTML5, CSS3 Grid layouts, and Vanilla JavaScript (`script.js`) managing asynchronous fetch streams.
