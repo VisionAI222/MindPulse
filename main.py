@@ -236,6 +236,7 @@ async def alert_human(chat_id: str, student_name: str, reason: str):
         except Exception as e:
             # If sending to one counselor fails, log it but don't stop the loop
             print(f"[Alert Error] Failed to send alert to {counselor}: {str(e)}")
+            
 def get_ist_timestamp():
     # Render servers run on UTC, so we add 5 hours and 30 minutes to match IST
     utc_now = datetime.datetime.now(datetime.timezone.utc)
@@ -261,8 +262,6 @@ async def get_raw_logs():
 @app.get("/", response_class=HTMLResponse)
 async def live_terminal_url():
     # The browser window loads fresh with just the base startup text.
-    # It will dynamically append incoming webhook updates without showing old history!
-    html_layout = f"""
     <!DOCTYPE html>
     <html>
     <head>
@@ -298,8 +297,8 @@ async def live_terminal_url():
                         container.innerText += "\\n" + text;
                         window.scrollTo(0, document.body.scrollHeight);
                     }}
-                } catch (e) {{ console.error(e); }}
-            }
+                }} catch (e) {{ console.error(e); }}
+            }}
             // Poll for new webhook steps every 2 seconds
             setInterval(refreshLogs, 2000);
         </script>
